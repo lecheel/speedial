@@ -16,6 +16,7 @@ Quickly access your favorite actions, commands, or functions with a clean, minim
 - **Customizable UI**: Define highlight groups and appearance.
 
 ---
+![image]("./speedial.png")
 
 
 ## 🔧 Installation
