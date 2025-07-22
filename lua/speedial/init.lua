@@ -1,7 +1,7 @@
 -- A classic speed-dial menu for Neovim (Lua)
-local config_module = require("dev.speedial.config")
-local layout_module = require("dev.speedial.layout")
-local Instance = require("dev.speedial.instance")
+local config_module = require("speedial.config")
+local layout_module = require("speedial.layout")
+local Instance = require("speedial.instance")
 
 local M = {}
 

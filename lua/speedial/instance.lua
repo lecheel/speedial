@@ -1,5 +1,5 @@
 -- Represents a single, active instance of the speed-dial menu.
-local ui = require("dev.speedial.ui")
+local ui = require("speedial.ui")
 
 local Instance = {}
 Instance.__index = Instance
