@@ -21,6 +21,7 @@ Comes with a built-in default menu for an instant start.
 
 ---
 ![image](./speedial.png)
+![image](./speedial2.png)
 
 ## 🔧 Installation
 
