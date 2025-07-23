@@ -1,64 +1,122 @@
--- A classic speed-dial menu for Neovim (Lua)
-local config_module = require("speedial.config")
-local layout_module = require("speedial.layout")
-local Instance = require("speedial.instance")
-
 local M = {}
 
--- Store the merged configuration and the single active menu instance.
--- Initialize with a deep copy of defaults to prevent errors if setup() is not called.
-M.config = vim.tbl_deep_extend("force", {}, config_module.defaults)
-local active_instance = nil
+-- Import necessary modules
+local config_module = require("dev.speedial.config") -- Import config module
+local layout_module = require("dev.speedial.layout")
+local Instance = require("dev.speedial.instance")
 
---- Public API: Open the speed dial menu.
-function M.open()
-    -- If already open, close it first.
-    if active_instance then
-        active_instance:close()
+-- Store the full configuration
+M.config = {}
+
+-- Define a simple, built-in default menu.
+-- This provides a working menu out-of-the-box.
+local builtin_default_menu_items = {
+    { label = "Find File", key = "f", action = ":Telescope find_files", chord = "f", desc = "Find File" },
+    { label = "Live Grep", key = "g", action = ":Telescope live_grep",  chord = "g", desc = "Live Grep" },
+    { label = "Buffers",   key = "b", action = ":Telescope buffers",    chord = "b", desc = "List Buffers" },
+    { label = "Help Tags", key = "h", action = ":Telescope help_tags",  chord = "h", desc = "Search Help" },
+    -- Add more generic, useful items as defaults if desired
+}
+
+--- Setup Speedial
+--- @param opts table Configuration options
+function M.setup(opts)
+    -- 1. Setup custom highlight groups - DO THIS FIRST
+    if config_module.setup_highlights and type(config_module.setup_highlights) == "function" then
+        config_module.setup_highlights()
+    else
+        -- Fallback: Define minimal highlights if config.setup_highlights fails
+        pcall(vim.api.nvim_set_hl, 0, "SpeedialNormal", { bg = "NONE", fg = "NONE" })
+        pcall(vim.api.nvim_set_hl, 0, "SpeedialKey", { fg = "Cyan", bold = true })
+        pcall(vim.api.nvim_set_hl, 0, "SpeedialChord", { fg = "Blue", italic = true })
+        pcall(vim.api.nvim_set_hl, 0, "SpeedialSelected", { bg = "DarkGray", fg = "White", bold = true })
+    end
+
+    -- 2. Merge user options with the defaults defined in config.lua
+    -- Ensure config_module.defaults exists and is a table
+    local base_defaults = config_module.defaults or {}
+    if type(base_defaults) ~= "table" then
+        base_defaults = {}
+    end
+    -- Merge base defaults with user options
+    M.config = vim.tbl_deep_extend("force", base_defaults, opts or {})
+
+    -- 3. Ensure menus is a table
+    M.config.menus = M.config.menus or {}
+end
+
+--- Resolve a menu name or definition to an item table.
+--- @param menu_spec string|table The menu name (string) or direct item table.
+--- @return table|nil items The resolved items table, or nil on failure.
+local function resolve_menu_items(menu_spec)
+    if type(menu_spec) == "table" then
+        return menu_spec
+    elseif type(menu_spec) == "string" then
+        local success, module_or_items = pcall(require, menu_spec)
+        if success then
+            if type(module_or_items) == "table" then
+                return module_or_items
+            else
+                vim.notify("Speedial: Module '" .. menu_spec .. "' did not return a table.", vim.log.levels.ERROR)
+                return nil
+            end
+        else
+            vim.notify("Speedial: Failed to load menu module '" .. menu_spec .. "': " .. tostring(module_or_items),
+                vim.log.levels.ERROR)
+            return nil
+        end
+    else
+        vim.notify("Speedial: Invalid menu specification type: " .. type(menu_spec), vim.log.levels.ERROR)
+        return nil
+    end
+end
+
+--- Open a Speedial menu.
+--- @param menu_name string|nil (Optional) Name of the menu to open. Defaults to "default".
+function M.open(menu_name)
+    menu_name = menu_name or "default"
+
+    local menu_spec = nil
+    -- Check if the user defined a specific menu for this name
+    if M.config.menus and M.config.menus[menu_name] then
+        menu_spec = M.config.menus[menu_name]
+    else
+        -- If it's the special "default" name and no user menu was found,
+        -- use the built-in default items.
+        if menu_name == "default" then
+            menu_spec = builtin_default_menu_items
+        else
+            -- Otherwise, assume the menu_name is a module name to load directly
+            menu_spec = menu_name
+        end
+    end
+
+    if not menu_spec then
+        vim.notify("Speedial: No menu specification found for '" .. menu_name .. "'.", vim.log.levels.WARN)
         return
     end
 
-    -- Generate the layout based on current items and config.
-    local layout = layout_module.generate(M.config.items, M.config)
+    local items_to_use = resolve_menu_items(menu_spec)
+
+    if not items_to_use or vim.tbl_isempty(items_to_use) then
+        vim.notify("Speedial: Menu '" .. menu_name .. "' is empty or could not be loaded.", vim.log.levels.WARN)
+        return
+    end
+
+    -- Use the M.config which now correctly includes defaults and user overrides
+    local popup_config = M.config -- This is the correctly merged config
+
+    local layout = layout_module.generate(items_to_use, popup_config)
+
     if not layout then
-        vim.notify("Speedial: No items configured.", vim.log.levels.WARN)
+        vim.notify("Speedial: Failed to generate layout for menu '" .. menu_name .. "'.", vim.log.levels.ERROR)
         return
     end
 
-    -- Create and store a new menu instance.
-    -- The on_close callback ensures we clear the active_instance reference.
-    active_instance = Instance.new(layout, M.config, function()
-        active_instance = nil
+    -- Pass the correctly merged popup_config to Instance.new
+    local instance = Instance.new(layout, popup_config, function()
+        -- Optional on_close callback
     end)
 end
-
---- Public API: Add an item to the menu list.
----@param item table The item to add, e.g., { label, key, action, chord }.
-function M.add(item)
-    -- Ensure items table exists before trying to add to it.
-    if not M.config.items then M.config.items = {} end
-    table.insert(M.config.items, item)
-end
-
---- Public API: Configure the plugin.
---- This should be called by the user in their Neovim config.
----@param user_config table User-provided configuration overrides.
-function M.setup(user_config)
-    -- Define highlights once
-    config_module.setup_highlights()
-
-    -- Merge user config with a fresh deep copy of the defaults.
-    -- This makes multiple setup() calls non-additive and predictable.
-    local defaults_copy = vim.tbl_deep_extend("force", {}, config_module.defaults)
-    M.config = vim.tbl_deep_extend("force", defaults_copy, user_config or {})
-
-    -- Ensure `items` is always a table, even if the user provides `items = nil`.
-    if not M.config.items then
-        M.config.items = {}
-    end
-end
-
--- The self-registering command and keymap have been removed.
--- Your lazy.nvim configuration now handles this, which is the correct approach.
 
 return M
