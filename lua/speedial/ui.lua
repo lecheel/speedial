@@ -26,6 +26,11 @@ end
 
 function M.create(layout, config)
     local buf_id = vim.api.nvim_create_buf(false, true)
+
+    -- Mark this as a Speedial buffer for identification
+    vim.api.nvim_buf_set_var(buf_id, 'speedial_buffer', true)
+    vim.api.nvim_buf_set_option(buf_id, 'filetype', 'speedial')
+
     vim.bo[buf_id].bufhidden = "wipe"
     vim.bo[buf_id].buftype = "nofile"
     vim.bo[buf_id].swapfile = false

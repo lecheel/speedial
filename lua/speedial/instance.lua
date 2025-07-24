@@ -23,7 +23,19 @@ end
 
 function Instance:close()
     if not self.win_id then return end
+
+    -- Clear any remaining highlights
+    if self.buf_id and vim.api.nvim_buf_is_valid(self.buf_id) then
+        vim.api.nvim_buf_clear_namespace(self.buf_id, self.ns_id, 0, -1)
+    end
+
     ui.close(self.win_id)
+
+    -- Clean up buffer if it still exists
+    if self.buf_id and vim.api.nvim_buf_is_valid(self.buf_id) then
+        vim.api.nvim_buf_delete(self.buf_id, { force = true })
+    end
+
     self.win_id, self.buf_id = nil, nil
     if self.on_close_callback then self.on_close_callback() end
 end

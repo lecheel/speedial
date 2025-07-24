@@ -4,6 +4,7 @@ local M = {}
 local config_module = require("dev.speedial.config") -- Import config module
 local layout_module = require("dev.speedial.layout")
 local Instance = require("dev.speedial.instance")
+local current_instance = nil
 
 -- Store the full configuration
 M.config = {}
@@ -71,9 +72,48 @@ local function resolve_menu_items(menu_spec)
     end
 end
 
+-- Add this helper function to check for existing Speedial windows
+local function close_existing_speedial()
+    if current_instance then
+        current_instance:close()
+        current_instance = nil
+        return true
+    end
+
+    -- Fallback: check for any floating windows that might be Speedial
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative ~= "" then
+            local buf = vim.api.nvim_win_get_buf(win)
+            -- Check if it's a Speedial buffer by checking buffer variables
+            local success, is_speedial = pcall(vim.api.nvim_buf_get_var, buf, 'speedial_buffer')
+            if success and is_speedial then
+                vim.api.nvim_win_close(win, true)
+                if vim.api.nvim_buf_is_valid(buf) then
+                    vim.api.nvim_buf_delete(buf, { force = true })
+                end
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Add this function to allow toggling the menu
+function M.toggle(menu_name)
+    if current_instance then
+        current_instance:close()
+        current_instance = nil
+    else
+        M.open(menu_name)
+    end
+end
+
 --- Open a Speedial menu.
 --- @param menu_name string|nil (Optional) Name of the menu to open. Defaults to "default".
 function M.open(menu_name)
+    -- Prevent reentry: close any existing Speedial menu first
+    close_existing_speedial()
+
     menu_name = menu_name or "default"
 
     local menu_spec = nil
@@ -113,10 +153,11 @@ function M.open(menu_name)
         return
     end
 
-    -- Pass the correctly merged popup_config to Instance.new
     local instance = Instance.new(layout, popup_config, function()
-        -- Optional on_close callback
+        current_instance = nil
+        -- Call original on_close callback if needed
     end)
+    current_instance = instance
 end
 
 return M
