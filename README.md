@@ -179,3 +179,7 @@ Example:
 ## 📄 License
 
 MIT — See `LICENSE` file.
+
+## 📦 Alternatives
+
+- [menu](https://github.com/nvzone/menu)
